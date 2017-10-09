@@ -24,20 +24,20 @@ func fact(n: Double) -> Double {                                            // f
 
 struct CalculatorModel {
     
-    private var accumulated: (value: Double?, description: String) = (nil, " ")
-    private var operand: String?
-    private var lastUnary = false                                                   //checks if last operation was a unary operation
+    //private var accumulated: (value: Double?, description: String) = (nil, " ")
+    //private var operand: String?
+    //private var lastUnary = false                                                   //checks if last operation was a unary operation
     
-    //**********
-    var externalExpressionArray = [String?] ()             //array components of description/input
+    private var externalExpressionArray = [String?] ()             //array components of description/input
     
 
     private enum Operation {
-        case clear
         case constant(Double)
         case unaryOperation((Double) -> Double, (String) -> String)
         case binaryOperation((Double, Double) -> Double, (Void) -> String)                              //(String, String) -> String)
         case equals
+        case clear
+        //case undo
     }
     
     private var operations: [String:Operation] = [
@@ -61,102 +61,28 @@ struct CalculatorModel {
 
         "sin": Operation.unaryOperation(sin, {" sin(\($0))"}),                       //before
         "cos": Operation.unaryOperation(cos, {" cos(\($0))"}),
-        "tan": Operation.unaryOperation(tan, {" tan(\($0))"})
+        "tan": Operation.unaryOperation(tan, {" tan(\($0))"}),
+        
+        //"←": Operation.undo
     ]
     
     mutating func performOperation (_ symbol: String) {
-        
-        //**********
         externalExpressionArray.append(symbol)
-        
-        let descriptionHasEquals = accumulated.description.contains("=")
-        accumulated.description = accumulated.description.replacingOccurrences(of: " ...", with: "")          //remove ellipsis
-        
-        if let operation = operations[symbol]  {
-            
-            switch operation {
-                
-            case .constant(let value):
-                if (lastUnary || descriptionHasEquals) {                                          //if last operation was a unary operation, clear description
-                    accumulated.description = " "
-                    //**********
-                    externalExpressionArray = []
-                }
-                accumulated = (value, addToDescription("\(symbol)"))
-                
-                
-            case .unaryOperation (let function, let descriptionFunction):
-                if lastUnary {
-                    accumulated.description = " "
-                    //**********
-                    externalExpressionArray = []
-                }
-                accumulated.description = accumulated.description.components(separatedBy: " ").dropLast().joined(separator: " ")
-                if accumulated.value != nil {
-                    if descriptionHasEquals {
-                        accumulated = (function(accumulated.value!), descriptionFunction("\(accumulated.description)"))
-                    } else {
-                        accumulated = (function(accumulated.value!), addToDescription(descriptionFunction(stringAccumulatedValue())))
-
-                    }
-                }
-                lastUnary = true
-                
-            case .binaryOperation (let function, let descriptionFunction):
-                if descriptionHasEquals {                                         // if already contains complete equation, clear description
-                    accumulated.description = accumulated.description.components(separatedBy: " ").dropLast().joined(separator: " ")
-                }
-                
-                if accumulated.value != nil {
-                    
-                    //first runthrough, save function as function, accumulator as value // accumDescription as savedDescription
-                    //second+ runthough, use saved function+value and return new value, (save function as function, accumulator as value)
-                    
-                    if resultIsPending {
-                        accumulated.value = (pendingBinaryOperation!.perform(with: accumulated.value!))
-                    }
-                    pendingBinaryOperation = PendingBinOp (function: function, firstOperand: accumulated.value!)
-                    
-                    accumulated = (nil, addToDescription(descriptionFunction()))
-                    lastUnary = false
-                    
-                }
-                
-            case .equals:
-                if accumulated.value != nil && !descriptionHasEquals {
-                    if resultIsPending {
-                        accumulated.value = pendingBinaryOperation!.perform(with: accumulated.value!)
-                        pendingBinaryOperation = nil
-                    }
-                    accumulated.description = addToDescription(" =")
-                    
-                }
-                lastUnary = false
-                
-            case .clear:                                                        //clears all values or returns to default
-                accumulated = (0, " ")
-                pendingBinaryOperation = nil
-                lastUnary = false
-                
-            }
-        }
-        
-        if resultIsPending {
-            accumulated.description = addToDescription(" ...")
-        }
     }
     
-    private func stringAccumulatedValue() -> String {
-        if Double(Int(accumulated.value!)) == accumulated.value! {
-            return String(Int(accumulated.value!))
-        } else {
-            return String(accumulated.value!)
-        }
+    mutating func setOperand (_ operand: Double) {
+        externalExpressionArray.append("\(operand)")
     }
     
-    private func addToDescription (_ addition: String) -> String {
-        let newDescription = accumulated.description + addition
-        return newDescription
+    mutating func setOperand (variable named: String) {
+        externalExpressionArray.append(named)
+    }
+    
+    mutating func undo () {
+        if !externalExpressionArray.isEmpty {
+            let undid = externalExpressionArray.dropLast()
+            externalExpressionArray = Array(undid)
+        }
     }
     
     private var pendingBinaryOperation: PendingBinOp?
@@ -170,29 +96,18 @@ struct CalculatorModel {
     }
     
     private var resultIsPending : Bool {
-        return pendingBinaryOperation != nil
+        return evaluate().isPending
     }
 
-    mutating func setOperand (_ operand: Double) {
-        accumulated.value = operand
-        if accumulated.description.contains("=") || lastUnary {                                         // if already contains complete equation, clear
-            accumulated.description = " "
-        }
-        accumulated.description = addToDescription(stringAccumulatedValue())
-        //**********
-        externalExpressionArray.append("\(operand)")
-        
-    }
-    
     var description: String? {                                                    //lists what user has typed
         get {
-            return accumulated.description
+            return evaluate().description
         }
     }
     
     var result: Double? {
         get {
-            return accumulated.value
+            return evaluate().result
         }
     }
     
@@ -203,21 +118,22 @@ struct CalculatorModel {
     // expression array: ["7", "+", "9", "√"]
     
     
-    func evaluate() -> (result: Double?, isPending: Bool, description: String) {
+    func evaluate(using variables: [String: Double]? = nil)
+        -> (result: Double?, isPending: Bool, description: String) {
         //
         
         var expressionArray = externalExpressionArray             //array components of description/input
-
         var result: Double?
         var description = " "
+        var letter: String? = nil
         var lastUnary = false
-        var pendingBinaryOperation: PendingBinOp?
+        var lastVar = false
         
+        var pendingBinaryOperation: PendingBinOp?
         var isPending : Bool {
             return pendingBinaryOperation != nil
         }
-        
-        
+            
         func stringResult() -> String {
             if Double(Int(result!)) == result! {
                 return String(Int(result!))
@@ -227,8 +143,31 @@ struct CalculatorModel {
         }
         
         func setOperand(_ operand: Double) {
+            if description.contains("=") || lastUnary || lastVar {                                         // if already contains complete equation, clear
+                description = " "
+            }
+            
             result = operand
+            description = description.replacingOccurrences(of: " ...", with: "")          //remove ellipsis
             description += stringResult()
+        }
+        
+        func setOperand (variable named: String) {
+            if variables?[named] != nil {
+                result = variables![named]
+            } else {
+                result = 0
+            }
+            if description.contains("=") || lastUnary {                                         // if already contains complete equation, clear
+                description = " "
+            }
+            description = description.replacingOccurrences(of: " ...", with: "")          //remove ellipsis
+            description += named
+            if isPending {
+                description += (" ...")
+            }
+            letter = named
+            lastVar = true
         }
         
         func performOperation (_ symbol: String) {
@@ -240,7 +179,7 @@ struct CalculatorModel {
                 switch operation {
                     
                 case .constant(let value):
-                    if (lastUnary || descriptionHasEquals) {                                          //if last operation was a unary operation, clear description
+                    if (lastUnary || descriptionHasEquals || lastVar) {                                          //if last operation was a unary operation, clear description
                         description = " "
                     }
                     result = value
@@ -255,12 +194,15 @@ struct CalculatorModel {
                         
                         if descriptionHasEquals {                                                   //how to append to expressionArray??
                             description = descriptionFunction(description)
+                        } else if letter != nil {
+                            description += descriptionFunction(letter!)
                         } else {
                             description += descriptionFunction(stringResult())
                         }
                         result = function(result!)
                     }
                     lastUnary = true
+                    lastVar = false
                     
                 case .binaryOperation (let function, let descriptionFunction):
                     if descriptionHasEquals {                                         // if already contains complete equation, clear description
@@ -268,9 +210,8 @@ struct CalculatorModel {
                     }
                     
                     if result != nil {
-                        //first runthrough, save function as function, accumulator as value // accumDescription as savedDescription
-                        //second+ runthough, use saved function+value and return new value, (save function as function, accumulator as value)
-                        
+                        //first runthrough, save function as function, result as value
+                        //second+ runthough, use saved function+value and evaluate with enw result, (save function as function, result as value)
                         if isPending {
                             result = (pendingBinaryOperation!.perform(with: result!))
                         }
@@ -279,6 +220,7 @@ struct CalculatorModel {
                         result = nil
                         description += descriptionFunction()
                         lastUnary = false
+                        lastVar = false
                     }
                     
                 case .equals:
@@ -290,12 +232,17 @@ struct CalculatorModel {
                         description += (" =")
                     }
                     lastUnary = false
+                    lastVar = false
                     
                 case .clear:                                                        //clears all values or returns to default
                     result = 0
                     description = " "
                     pendingBinaryOperation = nil
                     lastUnary = false
+                    lastVar = false
+                    letter = nil
+                //case .undo:
+                    //undo()
                 }
             }
             
@@ -307,8 +254,10 @@ struct CalculatorModel {
         for item in expressionArray {
             if Double(item!) != nil {
                 setOperand(Double(item!)!)
-            } else {
+            } else if operations[item!] != nil {
                 performOperation(item!)
+            } else {
+                setOperand(variable: item!)
             }
         }
         
@@ -320,14 +269,7 @@ struct CalculatorModel {
                 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     
     
-    /*mutating func setOperand (variable named: String) {
-        operand = named
-        if accumulated.description.contains("=") || lastUnary {                                         // if already contains complete equation, clear
-            accumulated.description = " "
-        }
-        accumulated.description = addToDescription(operand!)
-    }
-    
+    /*
     private enum Expression {
         case operand (Double)
         case variable (String)          //((String) -> Double)

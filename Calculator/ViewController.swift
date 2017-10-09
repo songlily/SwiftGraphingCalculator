@@ -12,10 +12,10 @@ class ViewController: UIViewController {
 
     @IBOutlet weak var display: UILabel!
     @IBOutlet weak var typed: UILabel!                    //label for description
+    @IBOutlet weak var memoryLabel: UILabel!
     private var model = CalculatorModel ()
+    private var saved = [String: Double]()
     
-    private var saved = ["M":  0.0]
-
     var isTyping = false
     var displayValue: Double {
         get {
@@ -42,34 +42,66 @@ class ViewController: UIViewController {
             display.text = digit
             isTyping = true
         }
+        if display.text!.characters.first == "0" && display.text!.characters.count > 1 {
+            display.text = String(display.text!.characters.dropFirst())
+        }
     }
     
     @IBAction func performOperation(_ sender: UIButton) {
         
-        if isTyping {
-            model.setOperand(displayValue)
-            isTyping = false
+        if sender.currentTitle == "←" {
+            //isTyping && !display.text.isEmpty, dropLast()
+            //isTyping && display.text.isEmpty, = 0 + model.undo() + !isTyping
+            //!isTyping, model.undo()
+            
+            if isTyping && !display.text!.isEmpty {
+                let back = display.text!.characters.dropLast()
+                display.text = String(back)
+            } else if isTyping && display.text!.isEmpty {
+                display.text = "0"
+                model.undo()
+                isTyping = false
+            } else if typed.text! != " "{
+                model.undo()
+            } else {
+                display.text = "0"
+            }
+            if display.text == "" {
+                display.text = "0"
+                isTyping = false
+            }
+            
+        } else {
+            
+            if sender.currentTitle == "C" {
+                saved = [:]
+                memoryLabel.text = " "
+            }
+            
+            if isTyping {
+                model.setOperand(displayValue)
+                isTyping = false
+            }
+            
+            if let mathSymbol = sender.currentTitle {
+                model.performOperation(mathSymbol)
+            }
+            
         }
         
-        if let mathSymbol = sender.currentTitle {
-            model.performOperation(mathSymbol)
-        }
+        let evaluated = model.evaluate(using: saved)
         
-        let evaluatedResult = model.evaluate()
-        
-        //if let result = model.result {
-        if let result = evaluatedResult.result {
+        if let result = evaluated.result {
             displayValue = result
-        
         }
-        //typed.text = model.description
-        typed.text = evaluatedResult.description                  //description shows up in label
+        typed.text = evaluated.description                  //description shows up in label
     }
     
     @IBAction func memory(_ sender: UIButton) {
         
-        /*if sender.currentTitle == "→M" {
+        if sender.currentTitle == "→M" {
             saved["M"] = displayValue
+            memoryLabel.text = "M = \(displayValue)"
             isTyping = false
         }
         
@@ -78,9 +110,9 @@ class ViewController: UIViewController {
             isTyping = false
         }
         
-        let evaluatedResult = model.evaluate(using: saved)
-        displayValue = evaluatedResult.result ?? 0       //could be nil
-        typed.text = evaluatedResult.description*/
+        let evaluated = model.evaluate(using: saved)
+        displayValue = evaluated.result ?? 0       //could be nil
+        typed.text = evaluated.description
         
     }
     
