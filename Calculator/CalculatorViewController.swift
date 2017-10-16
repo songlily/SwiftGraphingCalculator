@@ -1,5 +1,5 @@
 //
-//  ViewController.swift
+//  CalculatorViewController.swift
 //  Calculator
 //
 //  Created by Lily Song on 2017-09-17.
@@ -8,13 +8,52 @@
 
 import UIKit
 
-class ViewController: UIViewController {
+struct GetFunction {
+    private var model: CalculatorModel
+    init(passedModel: CalculatorModel) {
+        self.model = passedModel
+    }
+    
+    func evaluate(with x: Double) -> Double? {
+        if !model.evaluate().isPending {
+            let evaluated = model.evaluate(using: ["M": x])
+            let result = evaluated.result
+            return result
+        } else {
+            return nil
+        }
+    }
+}
+
+class CalculatorViewController: UIViewController {
 
     @IBOutlet weak var display: UILabel!
     @IBOutlet weak var typed: UILabel!                    //label for description
     @IBOutlet weak var memoryLabel: UILabel!
     private var model = CalculatorModel ()
     private var saved = [String: Double]()
+    
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+        let getFunction = GetFunction(passedModel: model)
+        var destinationViewController = segue.destination
+        if let navigationController = destinationViewController as? UINavigationController {
+            destinationViewController = navigationController.visibleViewController ?? destinationViewController
+        }
+        if let graphingViewController = destinationViewController as? GraphingViewController,
+           !model.evaluate().isPending {
+            
+            //set description for graphLabel
+            if model.evaluate().description.contains("=") {
+                graphingViewController.graphText = "y = \(model.evaluate().description.components(separatedBy: " ").dropLast().joined(separator: " "))"
+            } else if model.evaluate().description == " " {
+                graphingViewController.graphText = " "
+            } else {
+                graphingViewController.graphText = "y = \(model.evaluate().description)"
+            }
+            //push instance of getFunction to graphingViewController
+            graphingViewController.functionWrapper = getFunction
+        }
+    }
     
     var isTyping = false
     var displayValue: Double {
