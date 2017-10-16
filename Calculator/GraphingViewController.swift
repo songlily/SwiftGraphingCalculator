@@ -12,7 +12,7 @@ class GraphingViewController: UIViewController {
     
     @IBOutlet weak var graphLabel: UILabel!
     
-    var graphText: String! 
+    var graphText: String!
     
     @IBOutlet weak var graphingView: GraphingView! {
         didSet {
@@ -38,22 +38,17 @@ class GraphingViewController: UIViewController {
         super.viewDidLoad()
         graphLabel.text = graphText
         
-        graphingView.graphingVC = self
+        //graphingView.graphingVC = self
+        /*graphingView.getYValue = { xvalue -> Double? in
+         return self.getYValue(variable: xvalue)
+        }*/
+        graphingView.getYValue = {self.getYValue(variable: $0)}
+        
     }
     
     var functionWrapper: GetFunction!
-    func getYValue (variable x: CGFloat) -> CGFloat? {
-        if functionWrapper != nil {
-            let result = functionWrapper.evaluate(with: Double(x))
-            if result != nil {
-                return -CGFloat(result!)                               //return neg value since drawing y-axis is flipped
-            } else {
-                return nil
-            }
-            
-        } else {
-            return nil
-        }
+    func getYValue (variable x: Double) -> Double? {
+        return functionWrapper?.evaluate(with: x)
     }
 
 }

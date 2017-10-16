@@ -15,14 +15,28 @@ class GraphingView: UIView {
     // Takes an x vs y function
     // and graphs it
     
-    var graphingVC: GraphingViewController!
-
     @IBInspectable
     var scale: CGFloat = 25 { didSet { setNeedsDisplay() } }
     var origin: CGPoint?    { didSet { setNeedsDisplay() } }                         //could be not on screen == nil
     var axes = AxesDrawer()
     var lineWidth: CGFloat = 3.0
     var color: UIColor = UIColor.blue
+    
+    //var graphingVC: GraphingViewController!
+    var getYValue: ((Double) -> Double?)!
+    private func getYValueAsCGFloat(_ x : CGFloat) -> CGFloat? {
+        if getYValue != nil {
+            let result = getYValue(Double(x))
+            if result != nil {
+                return -CGFloat(result!)                               //return neg value since drawing y-axis is flipped
+            } else {
+                return nil
+            }
+            
+        } else {
+            return nil
+        }
+    }
     
     // Gesture functions
     
@@ -54,7 +68,7 @@ class GraphingView: UIView {
         }
     }
     
-    //Drawing functions
+    //Drawing functions    
     
     private func drawFunction () -> UIBezierPath {
         let path = UIBezierPath()
@@ -67,12 +81,11 @@ class GraphingView: UIView {
         path.move(to: CGPoint(x: -1, y: origin!.y))
         //for xPixel in CGFloat(0) ... horizontalPixels {
         for xPixel in stride(from: -1, to: horizontalPixels, by: +1 as CGFloat) {     //0 as CGFloat
-            if let yPixel = graphingVC.getYValue(variable: xFactor * (xPixel - origin!.x)) {
+            if let yPixel = getYValueAsCGFloat(xFactor * (xPixel - origin!.x)) {
                 path.addLine(to: CGPoint (x: xPixel, y: scale * yPixel + origin!.y))
             }
             
         }
-        
         path.lineWidth = lineWidth
         return path
     }
